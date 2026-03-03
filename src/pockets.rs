@@ -1,6 +1,6 @@
 use std::f64::consts::PI;
 
-use cairo::{Context, Rectangle};
+use cairo::Context;
 use gdk::EventButton;
 use shakmaty::{Color, Material, Piece, Role, Square};
 use std::time::Instant;

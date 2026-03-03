@@ -18,7 +18,7 @@ use std::f64::consts::PI;
 
 use std::time::Instant;
 
-use cairo::{Context, Rectangle};
+use cairo::Context;
 use gdk::EventButton;
 
 use shakmaty::{Bitboard, Board, Piece, Square};

@@ -18,6 +18,7 @@
 
 #![doc(html_root_url = "https://docs.rs/chessground/0.9.0")]
 #![warn(missing_debug_implementations)]
+#![allow(unused_must_use, dead_code)]
 
 extern crate cairo;
 extern crate gdk;
