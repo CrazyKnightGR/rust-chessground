@@ -1,0 +1,25 @@
+[package]
+name = "chessground"
+version = "0.9.0"
+description = "A chessboard widget for Relm/GTK"
+repository = "https://github.com/niklasf/rust-chessground"
+readme = "README.md"
+license = "GPL-3.0+"
+authors = ["Niklas Fiekas <niklas.fiekas@backscattering.de>"]
+categories = ["games", "gui"]
+keywords = ["chess"]
+edition = "2024"
+
+[dependencies]
+gtk = "0.16"
+gdk = "0.16"
+cairo-rs = "0.16"
+resvg = "0.47"
+tiny-skia = "0.12"
+time = "0.3"
+relm = "0.24"
+relm-derive = "0.24"
+shakmaty = "0.16"
+
+[dev-dependencies]
+rand = "0.6"
