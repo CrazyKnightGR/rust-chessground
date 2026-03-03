@@ -1,5 +1,6 @@
-extern crate gtk;
 extern crate chessground;
+extern crate gtk;
+#[macro_use]
 extern crate relm;
 #[macro_use]
 extern crate relm_derive;
@@ -9,8 +10,8 @@ use gtk::prelude::*;
 use relm::Widget;
 use relm_derive::widget;
 
-use shakmaty::{Square, Board};
-use chessground::{Ground, UserMove, SetBoard};
+use chessground::{Ground, SetBoard, UserMove};
+use shakmaty::{Board, Square};
 
 use self::Msg::*;
 
@@ -31,8 +32,8 @@ impl Widget for Win {
             Quit => gtk::main_quit(),
             PieceMoved(orig, dest) => {
                 if let Some(piece) = self.model.remove_piece_at(orig) {
-                    self.model.set_piece_at(dest, piece);
-                    self.components.ground.emit(SetBoard(self.model.clone()));
+                    self.model.set_piece_at(dest, piece, false);
+                    self.streams.ground.emit(SetBoard(self.model.clone()));
                 }
             }
         }

@@ -17,27 +17,26 @@
 //! A chessboard widget for Relm/GTK.
 
 #![doc(html_root_url = "https://docs.rs/chessground/0.9.0")]
-
 #![warn(missing_debug_implementations)]
 
-extern crate gtk;
-extern crate gdk;
 extern crate cairo;
-extern crate rsvg;
+extern crate gdk;
+extern crate gtk;
+extern crate relm;
 extern crate shakmaty;
 extern crate time;
-extern crate relm;
 #[macro_use]
 extern crate relm_derive;
 
-mod ground;
 mod boardstate;
-mod pieceset;
-mod pieces;
-mod promotable;
 mod drawable;
+mod ground;
+mod pieces;
+mod pieceset;
+mod pockets;
+mod promotable;
 mod util;
 
+pub use drawable::{DrawBrush, DrawShape};
 pub use ground::{Ground, GroundMsg, Pos};
 pub use GroundMsg::*;
-pub use drawable::{DrawBrush, DrawShape};

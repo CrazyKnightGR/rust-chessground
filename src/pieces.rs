@@ -16,44 +16,43 @@
 
 use std::f64::consts::PI;
 
-use time::SteadyTime;
+use std::time::Instant;
 
+use cairo::{Context, Rectangle};
 use gdk::EventButton;
-use cairo::Context;
-use rsvg::HandleExt;
 
-use shakmaty::{Square, Piece, Bitboard, Board};
+use shakmaty::{Bitboard, Board, Piece, Square};
 
-use util::{ease, file_to_float, pos_to_square, rank_to_float, square_to_pos};
-use promotable::Promotable;
-use boardstate::BoardState;
-use ground::{GroundMsg, EventContext, WidgetContext};
+use crate::boardstate::BoardState;
+use crate::ground::{EventContext, GroundMsg, WidgetContext};
+use crate::promotable::Promotable;
+use crate::util::{ease, pos_to_square, square_to_pos};
 
 pub struct Pieces {
     figurines: Vec<Figurine>,
     selected: Option<Square>,
     drag: Option<Drag>,
-    past: SteadyTime,
+    past: Instant,
 }
 
-struct Drag {
-    square: Square,
-    piece: Piece,
-    start: (f64, f64),
-    pos: (f64, f64),
-    threshold: bool,
+pub struct Drag {
+    pub square: Square,
+    pub piece: Piece,
+    pub start: (f64, f64),
+    pub pos: (f64, f64),
+    pub threshold: bool,
 }
 
 pub struct Figurine {
-    square: Square,
-    piece: Piece,
-    start: (f64, f64),
-    elapsed: f64,
-    time: SteadyTime,
-    last_drag: SteadyTime,
-    fading: bool,
-    replaced: bool,
-    dragging: bool,
+    pub square: Square,
+    pub piece: Piece,
+    pub start: (f64, f64),
+    pub elapsed: f64,
+    pub time: Instant,
+    pub last_drag: Instant,
+    pub fading: bool,
+    pub replaced: bool,
+    pub dragging: bool,
 }
 
 impl Pieces {
@@ -62,35 +61,42 @@ impl Pieces {
     }
 
     pub fn new_from_board(board: &Board) -> Pieces {
-        let now = SteadyTime::now();
+        let now = Instant::now();
 
         Pieces {
             selected: None,
             drag: None,
             past: now,
-            figurines: board.clone().into_iter().map(|(square, piece)| Figurine {
-                square,
-                piece,
-                start: (0.5 + file_to_float(square.file()), 7.5 - rank_to_float(square.rank())),
-                elapsed: 0.0,
-                time: now,
-                last_drag: now,
-                fading: false,
-                replaced: false,
-                dragging: false,
-            }).collect(),
+            figurines: board
+                .pieces()
+                .map(|(square, piece)| Figurine {
+                    square,
+                    piece,
+                    start: (
+                        0.5 + f64::from(square.file()),
+                        7.5 - f64::from(square.rank()),
+                    ),
+                    elapsed: 0.0,
+                    time: now,
+                    last_drag: now,
+                    fading: false,
+                    replaced: false,
+                    dragging: false,
+                })
+                .collect(),
         }
     }
 
     pub fn set_board(&mut self, board: &Board) {
         // clean faded figurines
-        let now = SteadyTime::now();
+        let now = Instant::now();
         self.figurines.retain(|f| !f.fading || f.alpha() > 0.0001);
 
         // diff
-        let mut added: Vec<_> = board.clone().into_iter().filter(|&(sq, piece)| {
-            self.figurine_at(sq).map_or(true, |f| f.piece != piece)
-        }).collect();
+        let mut added: Vec<_> = board
+            .pieces()
+            .filter(|&(sq, piece)| self.figurine_at(sq).map_or(true, |f| f.piece != piece))
+            .collect();
 
         for figurine in &mut self.figurines {
             if figurine.fading {
@@ -122,7 +128,7 @@ impl Pieces {
                     added.retain(|&(sq, _)| sq != best);
 
                     // snap dragged figurine to square
-                    if (now - figurine.last_drag).num_milliseconds() < 200 {
+                    if (now - figurine.last_drag).as_millis() < 200 {
                         figurine.start = square_to_pos(figurine.square);
                     }
                 } else {
@@ -138,7 +144,10 @@ impl Pieces {
             self.figurines.push(Figurine {
                 square,
                 piece,
-                start: (0.5 + file_to_float(square.file()), 7.5 - rank_to_float(square.rank())),
+                start: (
+                    0.5 + f64::from(square.file()),
+                    7.5 - f64::from(square.rank()),
+                ),
                 elapsed: 0.0,
                 time: now,
                 last_drag: self.past,
@@ -150,15 +159,23 @@ impl Pieces {
     }
 
     pub fn occupied(&self) -> Bitboard {
-        self.figurines.iter().filter(|f| !f.fading).map(|f| f.square).collect()
+        self.figurines
+            .iter()
+            .filter(|f| !f.fading)
+            .map(|f| f.square)
+            .collect()
     }
 
     pub fn figurine_at(&self, square: Square) -> Option<&Figurine> {
-        self.figurines.iter().find(|f| !f.fading && f.square == square)
+        self.figurines
+            .iter()
+            .find(|f| !f.fading && f.square == square)
     }
 
     pub fn figurine_at_mut(&mut self, square: Square) -> Option<&mut Figurine> {
-        self.figurines.iter_mut().find(|f| !f.fading && f.square == square)
+        self.figurines
+            .iter_mut()
+            .find(|f| !f.fading && f.square == square)
     }
 
     pub fn dragging_mut(&mut self) -> Option<&mut Figurine> {
@@ -206,12 +223,14 @@ impl Pieces {
 
     pub(crate) fn drag_mouse_move(&mut self, ctx: &EventContext) {
         if let Some(ref mut drag) = self.drag {
-            ctx.widget().queue_draw_rect(drag.pos.0 - 0.5, drag.pos.1 - 0.5, 1.0, 1.0);
+            ctx.widget()
+                .queue_draw_rect(drag.pos.0 - 0.5, drag.pos.1 - 0.5, 1.0, 1.0);
             if let Some(sq) = pos_to_square(drag.pos) {
                 ctx.widget().queue_draw_square(sq);
             }
             drag.pos = ctx.pos();
-            ctx.widget().queue_draw_rect(drag.pos.0 - 0.5, drag.pos.1 - 0.5, 1.0, 1.0);
+            ctx.widget()
+                .queue_draw_rect(drag.pos.0 - 0.5, drag.pos.1 - 0.5, 1.0, 1.0);
             if let Some(sq) = pos_to_square(drag.pos) {
                 ctx.widget().queue_draw_square(sq);
             }
@@ -223,10 +242,10 @@ impl Pieces {
             if drag.threshold {
                 // ensure orig square is selected
                 if self.selected != Some(drag.square) {
-                  self.selected = Some(drag.square);
-                  ctx.widget().queue_draw();
+                    self.selected = Some(drag.square);
+                    ctx.widget().queue_draw();
                 } else {
-                  ctx.widget().queue_draw_square(drag.square);
+                    ctx.widget().queue_draw_square(drag.square);
                 }
             }
         }
@@ -237,7 +256,7 @@ impl Pieces {
             ctx.widget().queue_draw();
 
             if let Some(ref mut figurine) = self.dragging_mut() {
-                figurine.last_drag = SteadyTime::now();
+                figurine.last_drag = Instant::now();
                 figurine.dragging = false;
             }
 
@@ -265,78 +284,93 @@ impl Pieces {
         }
     }
 
-    pub(crate) fn draw(&self, cr: &Context, state: &BoardState, promotable: &Promotable) -> Result<(), cairo::Error> {
-        self.draw_selection(cr, state)?;
-        self.draw_move_hints(cr, state)?;
+    pub(crate) fn draw(&self, cr: &Context, state: &BoardState, promotable: &Promotable) {
+        self.draw_selection(cr, state);
+        self.draw_move_hints(cr, state);
 
         for figurine in &self.figurines {
             if figurine.fading {
-                self.draw_figurine(cr, figurine, state, promotable)?;
+                self.draw_figurine(cr, figurine, state, promotable);
             }
         }
 
         for figurine in &self.figurines {
             if !figurine.fading && figurine.elapsed >= 1.0 {
-                self.draw_figurine(cr, figurine, state, promotable)?;
+                self.draw_figurine(cr, figurine, state, promotable);
             }
         }
 
         for figurine in &self.figurines {
             if !figurine.fading && figurine.elapsed < 1.0 {
-                self.draw_figurine(cr, figurine, state, promotable)?;
+                self.draw_figurine(cr, figurine, state, promotable);
             }
         }
-
-        Ok(())
     }
 
-    fn draw_figurine(&self, cr: &Context, figurine: &Figurine, state: &BoardState, promotable: &Promotable) -> Result<(), cairo::Error> {
+    fn draw_figurine(
+        &self,
+        cr: &Context,
+        figurine: &Figurine,
+        state: &BoardState,
+        promotable: &Promotable,
+    ) {
         // hide piece while promotion dialog is open
         if promotable.is_promoting(figurine.square) {
-            return Ok(());
+            return;
         }
 
         // draw ghost when dragging
-        let dragging =
-            figurine.dragging &&
-            self.drag.as_ref().map_or(false, |d| d.threshold && d.square == figurine.square);
+        let dragging = figurine.dragging
+            && self
+                .drag
+                .as_ref()
+                .map_or(false, |d| d.threshold && d.square == figurine.square);
 
         cr.push_group();
 
         let (x, y) = figurine.pos();
         cr.translate(x, y);
-        cr.rotate(state.orientation().fold_wb(0.0, PI));
+        cr.rotate(state.orientation().fold(0.0, PI));
         cr.translate(-0.5, -0.5);
         cr.scale(state.piece_set().scale(), state.piece_set().scale());
 
-        state.piece_set().by_piece(&figurine.piece).render_cairo(cr);
+        state
+            .piece_set()
+            .by_piece(&figurine.piece)
+            .render_to_cairo(cr);
 
-        cr.pop_group_to_source()?;
+        cr.pop_group_to_source();
 
-        cr.paint_with_alpha(if dragging { 0.2 } else { figurine.alpha() })?;
-
-        Ok(())
+        cr.paint_with_alpha(if dragging { 0.2 } else { figurine.alpha() });
     }
 
-    fn draw_selection(&self, cr: &Context, state: &BoardState) -> Result<(), cairo::Error> {
+    fn draw_selection(&self, cr: &Context, state: &BoardState) {
         if let Some(selected) = self.selected {
-            cr.rectangle(file_to_float(selected.file()), 7.0 - rank_to_float(selected.rank()), 1.0, 1.0);
+            cr.rectangle(
+                f64::from(selected.file()),
+                7.0 - f64::from(selected.rank()),
+                1.0,
+                1.0,
+            );
             cr.set_source_rgba(0.08, 0.47, 0.11, 0.5);
-            cr.fill()?;
+            cr.fill();
 
             if let Some(hovered) = self.drag.as_ref().and_then(|d| pos_to_square(d.pos)) {
                 if state.valid_move(selected, hovered) {
-                    cr.rectangle(file_to_float(hovered.file()), 7.0 - rank_to_float(hovered.rank()), 1.0, 1.0);
+                    cr.rectangle(
+                        f64::from(hovered.file()),
+                        7.0 - f64::from(hovered.rank()),
+                        1.0,
+                        1.0,
+                    );
                     cr.set_source_rgba(0.08, 0.47, 0.11, 0.25);
-                    cr.fill()?;
+                    cr.fill();
                 }
             }
         }
-
-        Ok(())
     }
 
-    fn draw_move_hints(&self, cr: &Context, state: &BoardState) -> Result<(), cairo::Error> {
+    fn draw_move_hints(&self, cr: &Context, state: &BoardState) {
         if let Some(selected) = self.selected {
             cr.set_source_rgba(0.08, 0.47, 0.11, 0.5);
 
@@ -345,57 +379,63 @@ impl Pieces {
 
             for square in state.move_targets(selected) {
                 if self.occupied().contains(square) {
-                    cr.move_to(file_to_float(square.file()), 7.0 - rank_to_float(square.rank()));
+                    cr.move_to(f64::from(square.file()), 7.0 - f64::from(square.rank()));
                     cr.rel_line_to(corner, 0.0);
                     cr.rel_line_to(-corner, corner);
                     cr.rel_line_to(0.0, -corner);
-                    cr.fill()?;
+                    cr.fill();
 
-                    cr.move_to(1.0 + file_to_float(square.file()), 7.0 - rank_to_float(square.rank()));
+                    cr.move_to(
+                        1.0 + f64::from(square.file()),
+                        7.0 - f64::from(square.rank()),
+                    );
                     cr.rel_line_to(0.0, corner);
                     cr.rel_line_to(-corner, -corner);
                     cr.rel_line_to(corner, 0.0);
-                    cr.fill()?;
+                    cr.fill();
 
-                    cr.move_to(file_to_float(square.file()), 8.0 - rank_to_float(square.rank()));
+                    cr.move_to(f64::from(square.file()), 8.0 - f64::from(square.rank()));
                     cr.rel_line_to(corner, 0.0);
                     cr.rel_line_to(-corner, -corner);
                     cr.rel_line_to(0.0, corner);
-                    cr.fill()?;
+                    cr.fill();
 
-                    cr.move_to(1.0 + file_to_float(square.file()), 8.0 - rank_to_float(square.rank()));
+                    cr.move_to(
+                        1.0 + f64::from(square.file()),
+                        8.0 - f64::from(square.rank()),
+                    );
                     cr.rel_line_to(-corner, 0.0);
                     cr.rel_line_to(corner, -corner);
                     cr.rel_line_to(0.0, corner);
-                    cr.fill()?;
+                    cr.fill();
                 } else {
-                    cr.arc(0.5 + file_to_float(square.file()),
-                           7.5 - rank_to_float(square.rank()),
-                           radius, 0.0, 2.0 * PI);
-                    cr.fill()?;
+                    cr.arc(
+                        0.5 + f64::from(square.file()),
+                        7.5 - f64::from(square.rank()),
+                        radius,
+                        0.0,
+                        2.0 * PI,
+                    );
+                    cr.fill();
                 }
             }
         }
-
-        Ok(())
     }
 
-    pub(crate) fn draw_drag(&self, cr: &Context, state: &BoardState) -> Result<(), cairo::Error> {
+    pub(crate) fn draw_drag(&self, cr: &Context, state: &BoardState) {
         match self.drag {
             Some(ref drag) if drag.threshold => {
                 cr.push_group();
                 cr.translate(drag.pos.0, drag.pos.1);
-                cr.rotate(state.orientation().fold_wb(0.0, PI));
+                cr.rotate(state.orientation().fold(0.0, PI));
                 cr.translate(-0.5, -0.5);
                 cr.scale(state.piece_set().scale(), state.piece_set().scale());
-                state.piece_set().by_piece(&drag.piece).render_cairo(cr);
-                cr.pop_group_to_source()?;
-                cr.paint()?;
+                state.piece_set().by_piece(&drag.piece).render_to_cairo(cr);
+                cr.pop_group_to_source();
+                cr.paint();
             }
             _ => {}
         }
-
-        Ok(())
     }
 }
 
@@ -406,20 +446,23 @@ impl Figurine {
 
     pub fn set_pos(&mut self, pos: (f64, f64)) {
         self.start = pos;
-        self.time = SteadyTime::now();
+        self.time = Instant::now();
         self.elapsed = 0.0;
     }
 
-    fn pos(&self) -> (f64, f64) {
+    pub fn pos(&self) -> (f64, f64) {
         if self.fading {
             self.start
         } else {
             let end = square_to_pos(self.square);
-            (ease(self.start.0, end.0, self.elapsed), ease(self.start.1, end.1, self.elapsed))
+            (
+                ease(self.start.0, end.0, self.elapsed),
+                ease(self.start.1, end.1, self.elapsed),
+            )
         }
     }
 
-    fn alpha(&self) -> f64 {
+    pub fn alpha(&self) -> f64 {
         if self.replaced {
             ease(0.5, 0.0, self.elapsed)
         } else if self.fading {
@@ -434,8 +477,8 @@ impl Figurine {
             let pos = self.pos();
             ctx.queue_draw_rect(pos.0 - 0.5, pos.1 - 0.5, 1.0, 1.0);
 
-            let now = SteadyTime::now();
-            self.elapsed = ((now - self.time).num_milliseconds() as f64 / 300.0).min(1.0);
+            let now = Instant::now();
+            self.elapsed = ((now - self.time).as_millis() as f64 / 300.0).min(1.0);
 
             let pos = self.pos();
             ctx.queue_draw_rect(pos.0 - 0.5, pos.1 - 0.5, 1.0, 1.0);

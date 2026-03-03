@@ -1,12 +1,13 @@
+extern crate chessground;
 extern crate gdk;
 extern crate gtk;
-extern crate chessground;
+#[macro_use]
 extern crate relm;
 #[macro_use]
 extern crate relm_derive;
 
-extern crate shakmaty;
 extern crate rand;
+extern crate shakmaty;
 
 use rand::seq::SliceRandom;
 
@@ -15,8 +16,8 @@ use gtk::prelude::*;
 use relm::Widget;
 use relm_derive::widget;
 
-use shakmaty::{Square, Role, Move, Chess, Position};
-use chessground::{Ground, UserMove, SetPos, Pos, Flip};
+use chessground::{Flip, Ground, Pos, SetPos, UserMove};
+use shakmaty::{Chess, Move, Position, Role, Square};
 
 use self::Msg::*;
 
@@ -89,49 +90,44 @@ impl Widget for Win {
 
     fn update(&mut self, event: Msg) {
         match event {
-            Quit => {
-                gtk::main_quit()
-            },
+            Quit => gtk::main_quit(),
             MovePlayed(orig, dest, promotion) => {
-                let legals = self.model.position.legal_moves();
+                let legals = self.model.position.legals();
                 let m = legals.iter().find(|m| {
-                    m.from() == Some(orig) && m.to() == dest &&
-                    m.promotion() == promotion
+                    m.from() == Some(orig) && m.to() == dest && m.promotion() == promotion
                 });
 
                 if let Some(m) = m {
                     self.model.push(m);
-                    self.components.ground.emit(SetPos(self.model.pos()));
+                    self.streams.ground.emit(SetPos(self.model.pos()));
                 }
-            },
+            }
             KeyPressed(b' ') => {
                 // play a random move
-                let legals = self.model.position.legal_moves();
+                let legals = self.model.position.legals();
                 if let Some(m) = legals.choose(&mut rand::thread_rng()) {
                     self.model.push(m);
-                    self.components.ground.emit(SetPos(self.model.pos()));
+                    self.streams.ground.emit(SetPos(self.model.pos()));
                 }
-            },
-            KeyPressed(b'f') => {
-                self.components.ground.emit(Flip)
-            },
+            }
+            KeyPressed(b'f') => self.streams.ground.emit(Flip),
             KeyPressed(b'k') | Scroll(ScrollDirection::Up) => {
                 self.model.undo();
-                self.components.ground.emit(SetPos(self.model.pos()));
-            },
+                self.streams.ground.emit(SetPos(self.model.pos()));
+            }
             KeyPressed(b'j') | Scroll(ScrollDirection::Down) => {
                 self.model.redo();
-                self.components.ground.emit(SetPos(self.model.pos()));
-            },
+                self.streams.ground.emit(SetPos(self.model.pos()));
+            }
             KeyPressed(b'h') => {
                 self.model.undo_all();
-                self.components.ground.emit(SetPos(self.model.pos()));
-            },
+                self.streams.ground.emit(SetPos(self.model.pos()));
+            }
             KeyPressed(b'l') => {
                 self.model.redo_all();
-                self.components.ground.emit(SetPos(self.model.pos()));
-            },
-            _ => {},
+                self.streams.ground.emit(SetPos(self.model.pos()));
+            }
+            _ => {}
         }
     }
 
@@ -144,7 +140,7 @@ impl Widget for Win {
                     scroll_event(_, e) => (Scroll(e.direction()), Inhibit(false)),
                 },
             },
-            key_press_event(_, e) => (KeyPressed(*e.keyval() as u8), Inhibit(false)),
+            key_press_event(_, _) => (KeyPressed(0), Inhibit(false)),
             delete_event(_, _) => (Quit, Inhibit(false)),
         }
     }

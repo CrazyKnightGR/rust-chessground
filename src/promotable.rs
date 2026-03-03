@@ -16,18 +16,17 @@
 
 use std::f64::consts::PI;
 
-use time::SteadyTime;
+use std::time::Instant;
 
+use cairo::{Context, Rectangle};
 use gtk::prelude::*;
-use cairo::Context;
-use rsvg::HandleExt;
 
-use shakmaty::{Square, Rank, Color, Role, MoveList};
+use shakmaty::{Color, MoveList, Rank, Role, Square};
 
-use util::{ease, file_to_float, square_to_pos};
-use pieces::Pieces;
-use boardstate::BoardState;
-use ground::{WidgetContext, EventContext, GroundMsg};
+use crate::boardstate::BoardState;
+use crate::ground::{EventContext, GroundMsg, WidgetContext};
+use crate::pieces::Pieces;
+use crate::util::{ease, square_to_pos};
 
 pub struct Promotable {
     promoting: Option<Promoting>,
@@ -42,15 +41,13 @@ struct Promoting {
 
 struct Hover {
     square: Square,
-    since: SteadyTime,
+    since: Instant,
     elapsed: f64,
 }
 
 impl Promotable {
     pub fn new() -> Promotable {
-        Promotable {
-            promoting: None,
-        }
+        Promotable { promoting: None }
     }
 
     pub fn start(&mut self, color: Color, orig: Square, dest: Square) {
@@ -60,7 +57,7 @@ impl Promotable {
             dest,
             hover: Some(Hover {
                 square: dest,
-                since: SteadyTime::now(),
+                since: Instant::now(),
                 elapsed: 0.0,
             }),
         });
@@ -73,8 +70,9 @@ impl Promotable {
     pub fn update(&mut self, legals: &MoveList) {
         let cancel = if let Some(ref promoting) = self.promoting {
             !legals.iter().any(|m| {
-                m.from() == Some(promoting.orig) && m.to() == promoting.dest &&
-                m.promotion().is_some()
+                m.from() == Some(promoting.orig)
+                    && m.to() == promoting.dest
+                    && m.promotion().is_some()
             })
         } else {
             false
@@ -90,12 +88,16 @@ impl Promotable {
     }
 
     pub(crate) fn queue_animation(&mut self, ctx: &WidgetContext) {
-        if let Some(Promoting { hover: Some(ref mut hover), .. }) = self.promoting {
+        if let Some(Promoting {
+            hover: Some(ref mut hover),
+            ..
+        }) = self.promoting
+        {
             if hover.elapsed < 1.0 {
                 ctx.queue_draw_square(hover.square);
             }
 
-            hover.elapsed = ((SteadyTime::now() - hover.since).num_milliseconds() as f64 / 1000.0).min(1.0);
+            hover.elapsed = ((Instant::now() - hover.since).as_millis() as f64 / 1000.0).min(1.0);
         }
     }
 
@@ -114,7 +116,7 @@ impl Promotable {
 
                 promoting.hover = square.map(|square| Hover {
                     square,
-                    since: SteadyTime::now(),
+                    since: Instant::now(),
                     elapsed: 0.0,
                 });
             }
@@ -137,16 +139,20 @@ impl Promotable {
                 if square.file() == promoting.dest.file() {
                     let role = match i8::from(square.rank()) {
                         r if r == base => Some(Role::Queen),
-                        r if r == base + side.fold_wb(-1, 1) => Some(Role::Rook),
-                        r if r == base + side.fold_wb(-2, 2) => Some(Role::Bishop),
-                        r if r == base + side.fold_wb(-3, 3) => Some(Role::Knight),
-                        r if r == base + side.fold_wb(-4, 4) => Some(Role::King),
-                        r if r == base + side.fold_wb(-5, 5) => Some(Role::Pawn),
+                        r if r == base + side.fold(-1, 1) => Some(Role::Rook),
+                        r if r == base + side.fold(-2, 2) => Some(Role::Bishop),
+                        r if r == base + side.fold(-3, 3) => Some(Role::Knight),
+                        r if r == base + side.fold(-4, 4) => Some(Role::King),
+                        r if r == base + side.fold(-5, 5) => Some(Role::Pawn),
                         _ => None,
                     };
 
                     if role.is_some() {
-                        ctx.stream().emit(GroundMsg::UserMove(promoting.orig, promoting.dest, role));
+                        ctx.stream().emit(GroundMsg::UserMove(
+                            promoting.orig,
+                            promoting.dest,
+                            role,
+                        ));
                         return Inhibit(true);
                     }
                 }
@@ -156,12 +162,10 @@ impl Promotable {
         Inhibit(false)
     }
 
-    pub(crate) fn draw(&self, cr: &Context, state: &BoardState) -> Result<(), cairo::Error> {
+    pub(crate) fn draw(&self, cr: &Context, state: &BoardState) {
         if let Some(ref p) = self.promoting {
-            p.draw(cr, state)?;
+            p.draw(cr, state);
         }
-
-        Ok(())
     }
 }
 
@@ -170,22 +174,33 @@ impl Promoting {
         Color::from_white(self.dest.rank() > Rank::Fourth)
     }
 
-    fn draw(&self, cr: &Context, state: &BoardState) -> Result<(), cairo::Error> {
+    fn draw(&self, cr: &Context, state: &BoardState) {
         // make the board darker
         cr.rectangle(0.0, 0.0, 8.0, 8.0);
         cr.set_source_rgba(0.0, 0.0, 0.0, 0.5);
-        cr.fill()?;
+        cr.fill();
 
-        for (offset, role) in [Role::Queen, Role::Rook, Role::Bishop, Role::Knight, Role::King, Role::Pawn].iter().enumerate() {
+        for (offset, role) in [
+            Role::Queen,
+            Role::Rook,
+            Role::Bishop,
+            Role::Knight,
+            Role::King,
+            Role::Pawn,
+        ]
+        .iter()
+        .enumerate()
+        {
             if !state.legal_move(self.orig, self.dest, Some(*role)) {
                 continue;
             }
 
-            let rank = i8::from(self.dest.rank()) - self.orientation().fold_wb(offset as i8, -(offset as i8));
+            let rank =
+                i8::from(self.dest.rank()) - self.orientation().fold(offset as i8, -(offset as i8));
             let light = (i8::from(self.dest.file()) + rank) & 1 == 1;
 
-            cr.save()?;
-            cr.rectangle(file_to_float(self.dest.file()), 7.0 - f64::from(rank), 1.0, 1.0);
+            cr.save();
+            cr.rectangle(f64::from(self.dest.file()), 7.0 - f64::from(rank), 1.0, 1.0);
 
             // draw background
             if light {
@@ -193,37 +208,46 @@ impl Promoting {
             } else {
                 cr.set_source_rgb(0.18, 0.18, 0.18);
             }
-            cr.fill_preserve()?;
+            cr.fill_preserve();
             cr.clip();
 
             // draw piece
             let radius = match self.hover {
                 Some(ref hover) if i8::from(hover.square.rank()) == rank => {
-                    cr.set_source_rgb(ease(0.69, 1.0, hover.elapsed),
-                                      ease(0.69, 0.65, hover.elapsed),
-                                      ease(0.69, 0.0, hover.elapsed));
+                    cr.set_source_rgb(
+                        ease(0.69, 1.0, hover.elapsed),
+                        ease(0.69, 0.65, hover.elapsed),
+                        ease(0.69, 0.0, hover.elapsed),
+                    );
 
                     ease(0.5, 0.5f64.hypot(0.5), hover.elapsed)
-                },
+                }
                 _ => {
                     cr.set_source_rgb(0.69, 0.69, 0.69);
                     0.5
-                },
+                }
             };
 
-            cr.arc(0.5 + file_to_float(self.dest.file()), 7.5 - f64::from(rank), radius, 0.0, 2.0 * PI);
-            cr.fill()?;
+            cr.arc(
+                0.5 + f64::from(self.dest.file()),
+                7.5 - f64::from(rank),
+                radius,
+                0.0,
+                2.0 * PI,
+            );
+            cr.fill();
 
-            cr.translate(0.5 + file_to_float(self.dest.file()), 7.5 - f64::from(rank));
+            cr.translate(0.5 + f64::from(self.dest.file()), 7.5 - f64::from(rank));
             cr.scale(2f64.sqrt() * radius, 2f64.sqrt() * radius);
-            cr.rotate(state.orientation().fold_wb(0.0, PI));
+            cr.rotate(state.orientation().fold(0.0, PI));
             cr.translate(-0.5, -0.5);
             cr.scale(state.piece_set().scale(), state.piece_set().scale());
-            state.piece_set().by_piece(&role.of(self.color)).render_cairo(cr);
+            state
+                .piece_set()
+                .by_piece(&role.of(self.color))
+                .render_to_cairo(cr);
 
-            cr.restore()?;
+            cr.restore();
         }
-
-        Ok(())
     }
 }

@@ -16,14 +16,12 @@
 
 use std::f64::consts::PI;
 
-use gdk::{EventButton, ModifierType};
 use cairo::Context;
+use gdk::{EventButton, ModifierType};
 
 use shakmaty::Square;
 
-use ground::{EventContext, GroundMsg};
-
-use util::{file_to_float, rank_to_float};
+use crate::ground::{EventContext, GroundMsg};
 
 /// Shape colors.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -55,8 +53,15 @@ impl Drawable {
             drawing: None,
             shapes: Vec::new(),
             enabled: true,
-            erase_on_click: true,
+            erase_on_click: false,
         }
+    }
+
+    pub(crate) fn clear(&mut self, ctx: &EventContext) {
+        self.shapes.clear();
+        ctx.stream()
+            .emit(GroundMsg::ShapesChanged(self.shapes.clone()));
+        ctx.widget().queue_draw();
     }
 
     pub(crate) fn mouse_down(&mut self, ctx: &EventContext, e: &EventButton) {
@@ -68,13 +73,17 @@ impl Drawable {
             1 => {
                 if self.erase_on_click && !self.shapes.is_empty() {
                     self.shapes.clear();
-                    ctx.stream().emit(GroundMsg::ShapesChanged(self.shapes.clone()));
+                    ctx.stream()
+                        .emit(GroundMsg::ShapesChanged(self.shapes.clone()));
                     ctx.widget().queue_draw();
                 }
             }
             3 => {
                 self.drawing = ctx.square().map(|square| {
-                    let brush = if e.state().contains(ModifierType::MOD1_MASK | ModifierType::SHIFT_MASK) {
+                    let brush = if e
+                        .state()
+                        .contains(ModifierType::MOD1_MASK | ModifierType::SHIFT_MASK)
+                    {
                         DrawBrush::Yellow
                     } else if e.state().contains(ModifierType::MOD1_MASK) {
                         DrawBrush::Blue
@@ -114,28 +123,28 @@ impl Drawable {
 
                 // remove or add shape
                 let num_shapes = self.shapes.len();
-                self.shapes.retain(|s| s.orig != drawing.orig || s.dest != drawing.dest);
+                self.shapes
+                    .retain(|s| s.orig != drawing.orig || s.dest != drawing.dest);
                 if num_shapes == self.shapes.len() {
                     self.shapes.push(drawing);
                 }
 
-                ctx.stream().emit(GroundMsg::ShapesChanged(self.shapes.clone()));
+                ctx.stream()
+                    .emit(GroundMsg::ShapesChanged(self.shapes.clone()));
             }
 
             ctx.widget().queue_draw();
         }
     }
 
-    pub(crate) fn draw(&self, cr: &Context) -> Result<(), cairo::Error> {
+    pub(crate) fn draw(&self, cr: &Context) {
         for shape in &self.shapes {
-            shape.draw(cr)?;
+            shape.draw(cr);
         }
 
         if let Some(ref shape) = self.drawing {
-            shape.draw(cr)?;
+            shape.draw(cr);
         }
-
-        Ok(())
     }
 }
 
@@ -165,7 +174,7 @@ impl DrawShape {
         self.orig != self.dest
     }
 
-    fn draw(&self, cr: &Context) -> Result<(), cairo::Error> {
+    fn draw(&self, cr: &Context) {
         let opacity = 0.5;
 
         match self.brush {
@@ -175,17 +184,17 @@ impl DrawShape {
             DrawBrush::Yellow => cr.set_source_rgba(0.90, 0.94, 0.0, opacity),
         }
 
-        let orig_x = 0.5 + file_to_float(self.orig.file());
-        let orig_y = 7.5 - rank_to_float(self.orig.rank());
-        let dest_x = 0.5 + file_to_float(self.dest.file());
-        let dest_y = 7.5 - rank_to_float(self.dest.rank());
+        let orig_x = 0.5 + f64::from(self.orig.file());
+        let orig_y = 7.5 - f64::from(self.orig.rank());
+        let dest_x = 0.5 + f64::from(self.dest.file());
+        let dest_y = 7.5 - f64::from(self.dest.rank());
 
         if self.is_circle() {
             // draw circle
             let stroke = 0.05;
             cr.set_line_width(stroke);
             cr.arc(dest_x, dest_y, 0.5 * (1.0 - stroke), 0.0, 2.0 * PI);
-            cr.stroke()?;
+            cr.stroke();
         } else {
             // draw arrow
             let marker_size = 0.75;
@@ -206,17 +215,19 @@ impl DrawShape {
             // shaft
             cr.move_to(orig_x, orig_y);
             cr.line_to(shaft_x, shaft_y);
-            cr.stroke()?;
+            cr.stroke();
 
             // arrow head
             cr.move_to(head_x, head_y);
-            cr.line_to(shaft_x - dy * 0.5 * marker_size / hypot,
-                       shaft_y + dx * 0.5 * marker_size / hypot);
-            cr.line_to(shaft_x + dy * 0.5 * marker_size / hypot,
-                       shaft_y - dx * 0.5 * marker_size / hypot);
-            cr.fill()?;
+            cr.line_to(
+                shaft_x - dy * 0.5 * marker_size / hypot,
+                shaft_y + dx * 0.5 * marker_size / hypot,
+            );
+            cr.line_to(
+                shaft_x + dy * 0.5 * marker_size / hypot,
+                shaft_y - dx * 0.5 * marker_size / hypot,
+            );
+            cr.fill();
         }
-
-        Ok(())
     }
 }
