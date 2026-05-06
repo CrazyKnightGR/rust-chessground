@@ -18,7 +18,7 @@ use std::f64::consts::PI;
 
 use cairo::{Context, RadialGradient};
 
-use shakmaty::{Bitboard, Chess, Color, Move, MoveList, Position, Role, Square};
+use shakmaty::{Bitboard, Chess, Color, MoveList, Position, Role, Square};
 
 use crate::pieceset::PieceSet;
 
@@ -29,6 +29,7 @@ pub struct BoardState {
     turn: Option<Color>,
     piece_set: PieceSet,
     legals: MoveList,
+    position_key: String, // A unique identifier (fen without move number) for the position shapes
 }
 
 impl BoardState {
@@ -43,7 +44,8 @@ impl BoardState {
             last_move: None,
             turn: None,
             piece_set: PieceSet::merida(),
-            legals: MoveList::new(),
+            legals: MoveList::default(),
+            position_key: pos.board().to_string(),
         };
 
         state.set_position(pos);
@@ -56,7 +58,7 @@ impl BoardState {
         } else {
             None
         };
-        self.legals = pos.legals();
+        self.legals = pos.legal_moves();
         self.turn = Some(pos.turn());
     }
 
@@ -80,7 +82,7 @@ impl BoardState {
         self.legals
             .iter()
             .filter(|m| m.from() == Some(orig))
-            .map(Move::to)
+            .map(|m| m.to())
             .collect()
     }
 
@@ -112,6 +114,14 @@ impl BoardState {
 
     pub fn piece_set(&self) -> &PieceSet {
         &self.piece_set
+    }
+
+    pub fn position_key(&self) -> String {
+        self.position_key.clone()
+    }
+
+    pub fn update_position_key(&mut self, key: String) {
+        self.position_key = key;
     }
 
     pub(crate) fn draw(&self, cr: &Context) {
@@ -157,13 +167,20 @@ impl BoardState {
         }
     }
 
+    pub fn rotate(&self) -> f64 {
+        match self.orientation {
+            Color::White => 0.0,
+            Color::Black => PI,
+        }
+    }
+
     fn draw_text(&self, cr: &Context, (x, y): (f64, f64), text: &str) {
         let font = cr.font_extents().expect("font_extents");
         let e = cr.text_extents(text).expect("text_extents");
 
         cr.save();
         cr.translate(x, y);
-        cr.rotate(self.orientation.fold(0.0, PI));
+        cr.rotate(self.rotate());
         cr.move_to(-0.5 * e.width(), 0.5 * font.height() - font.descent());
         cr.show_text(text);
         cr.restore();
@@ -176,11 +193,11 @@ impl BoardState {
 
         cr.set_source_rgb(0.87, 0.89, 0.90); // light
 
-        for square in Bitboard::ALL {
+        for square in Square::ALL {
             if square.is_light() {
                 cr.rectangle(
-                    f64::from(square.file()),
-                    7.0 - f64::from(square.rank()),
+                    f64::from(u8::from(square.file())),
+                    7.0 - f64::from(u8::from(square.rank())),
                     1.0,
                     1.0,
                 );
@@ -193,8 +210,8 @@ impl BoardState {
         if let Some((orig, dest)) = self.last_move {
             cr.set_source_rgba(0.61, 0.78, 0.0, 0.41);
             cr.rectangle(
-                f64::from(orig.file()),
-                7.0 - f64::from(orig.rank()),
+                f64::from(u8::from(orig.file())),
+                7.0 - f64::from(u8::from(orig.rank())),
                 1.0,
                 1.0,
             );
@@ -202,8 +219,8 @@ impl BoardState {
 
             if dest != orig {
                 cr.rectangle(
-                    f64::from(dest.file()),
-                    7.0 - f64::from(dest.rank()),
+                    f64::from(u8::from(dest.file())),
+                    7.0 - f64::from(u8::from(dest.rank())),
                     1.0,
                     1.0,
                 );
@@ -214,8 +231,8 @@ impl BoardState {
 
     fn draw_check(&self, cr: &Context) {
         if let Some(check) = self.check {
-            let cx = 0.5 + f64::from(check.file());
-            let cy = 7.5 - f64::from(check.rank());
+            let cx = 0.5 + f64::from(u8::from(check.file()));
+            let cy = 7.5 - f64::from(u8::from(check.rank()));
             let gradient = RadialGradient::new(cx, cy, 0.0, cx, cy, 0.5f64.hypot(0.5));
             gradient.add_color_stop_rgba(0.0, 1.0, 0.0, 0.0, 1.0);
             gradient.add_color_stop_rgba(0.25, 0.91, 0.0, 0.0, 1.0);

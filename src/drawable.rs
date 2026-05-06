@@ -15,6 +15,7 @@
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 use std::f64::consts::PI;
+use std::collections::HashMap;
 
 use cairo::Context;
 use gdk::{EventButton, ModifierType};
@@ -43,6 +44,7 @@ pub struct DrawShape {
 pub struct Drawable {
     drawing: Option<DrawShape>,
     shapes: Vec<DrawShape>,
+    shapes_by_pos: HashMap<String, Vec<DrawShape>>,
     enabled: bool,
     erase_on_click: bool,
 }
@@ -52,9 +54,33 @@ impl Drawable {
         Drawable {
             drawing: None,
             shapes: Vec::new(),
+            shapes_by_pos: HashMap::new(),
             enabled: true,
             erase_on_click: false,
         }
+    }
+
+    pub(crate) fn save_for_position(&mut self, pos_keys: &str) {
+        if !self.shapes.is_empty() {
+            self.shapes_by_pos.insert(pos_keys.to_string(), self.shapes.clone());
+        }
+    }
+
+    pub(crate) fn load_for_position(&mut self, pos_key:&str) -> bool {
+        if let Some(shapes) = self.shapes_by_pos.get(pos_key) {
+            self.shapes = shapes.clone();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn remove_for_position(&mut self, pos_key: &str) {
+        self.shapes_by_pos.remove(pos_key);
+    }
+
+    pub(crate) fn clear_no_emit(&mut self) {
+        self.shapes.clear();
     }
 
     pub(crate) fn clear(&mut self, ctx: &EventContext) {
@@ -184,10 +210,10 @@ impl DrawShape {
             DrawBrush::Yellow => cr.set_source_rgba(0.90, 0.94, 0.0, opacity),
         }
 
-        let orig_x = 0.5 + f64::from(self.orig.file());
-        let orig_y = 7.5 - f64::from(self.orig.rank());
-        let dest_x = 0.5 + f64::from(self.dest.file());
-        let dest_y = 7.5 - f64::from(self.dest.rank());
+        let orig_x = 0.5 + f64::from(u8::from(self.orig.file()));
+        let orig_y = 7.5 - f64::from(u8::from(self.orig.rank()));
+        let dest_x = 0.5 + f64::from(u8::from(self.dest.file()));
+        let dest_y = 7.5 - f64::from(u8::from(self.dest.rank()));
 
         if self.is_circle() {
             // draw circle

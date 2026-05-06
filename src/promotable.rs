@@ -21,7 +21,7 @@ use std::time::Instant;
 use cairo::Context;
 use gtk::prelude::*;
 
-use shakmaty::{Color, MoveList, Rank, Role, Square};
+use shakmaty::{Color, MoveList, Role, Square};
 
 use crate::boardstate::BoardState;
 use crate::ground::{EventContext, GroundMsg, WidgetContext};
@@ -137,13 +137,17 @@ impl Promotable {
                 let base = i8::from(promoting.dest.rank());
 
                 if square.file() == promoting.dest.file() {
+                    let offset = match side {
+                        Color::White => -1,
+                        Color::Black => 1,
+                    };
                     let role = match i8::from(square.rank()) {
                         r if r == base => Some(Role::Queen),
-                        r if r == base + side.fold(-1, 1) => Some(Role::Rook),
-                        r if r == base + side.fold(-2, 2) => Some(Role::Bishop),
-                        r if r == base + side.fold(-3, 3) => Some(Role::Knight),
-                        r if r == base + side.fold(-4, 4) => Some(Role::King),
-                        r if r == base + side.fold(-5, 5) => Some(Role::Pawn),
+                        r if r == base + offset => Some(Role::Rook),
+                        r if r == base + offset * 2 => Some(Role::Bishop),
+                        r if r == base + offset * 3 => Some(Role::Knight),
+                        r if r == base + offset * 4 => Some(Role::King),
+                        r if r == base + offset * 5 => Some(Role::Pawn),
                         _ => None,
                     };
 
@@ -171,7 +175,10 @@ impl Promotable {
 
 impl Promoting {
     fn orientation(&self) -> Color {
-        Color::from_white(self.dest.rank() > Rank::Fourth)
+        match u8::from(self.dest.rank()) > 3 {
+            true => Color::White,
+            false => Color::Black,
+        }
     }
 
     fn draw(&self, cr: &Context, state: &BoardState) {
@@ -195,12 +202,20 @@ impl Promoting {
                 continue;
             }
 
-            let rank =
-                i8::from(self.dest.rank()) - self.orientation().fold(offset as i8, -(offset as i8));
+            let sign: i8 = match self.orientation() {
+                Color::White => -1,
+                Color::Black => 1,
+            };
+            let rank = i8::from(self.dest.rank()) - sign * offset as i8;
             let light = (i8::from(self.dest.file()) + rank) & 1 == 1;
 
             cr.save();
-            cr.rectangle(f64::from(self.dest.file()), 7.0 - f64::from(rank), 1.0, 1.0);
+            cr.rectangle(
+                f64::from(u8::from(self.dest.file())),
+                7.0 - f64::from(rank),
+                1.0,
+                1.0,
+            );
 
             // draw background
             if light {
@@ -229,7 +244,7 @@ impl Promoting {
             };
 
             cr.arc(
-                0.5 + f64::from(self.dest.file()),
+                0.5 + f64::from(u8::from(self.dest.file())),
                 7.5 - f64::from(rank),
                 radius,
                 0.0,
@@ -237,9 +252,12 @@ impl Promoting {
             );
             cr.fill();
 
-            cr.translate(0.5 + f64::from(self.dest.file()), 7.5 - f64::from(rank));
+            cr.translate(
+                0.5 + f64::from(u8::from(self.dest.file())),
+                7.5 - f64::from(rank),
+            );
             cr.scale(2f64.sqrt() * radius, 2f64.sqrt() * radius);
-            cr.rotate(state.orientation().fold(0.0, PI));
+            cr.rotate(state.rotate());
             cr.translate(-0.5, -0.5);
             cr.scale(state.piece_set().scale(), state.piece_set().scale());
             state

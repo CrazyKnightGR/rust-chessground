@@ -37,11 +37,11 @@ pub fn pos_to_pocket((x, y): (f64, f64)) -> Option<usize> {
 }
 
 pub fn pos_to_square((x, y): (f64, f64)) -> Option<Square> {
-    let (x, y) = (x.floor(), y.floor());
-    if 0f64 <= x && x <= 7f64 && 0f64 <= y && y <= 7f64 {
+    let (x, y) = (x.floor() as i32, y.floor() as i32);
+    if 0 <= x && x <= 7 && 0 <= y && y <= 7 {
         Some(Square::from_coords(
             File::new(x as u32),
-            Rank::new(7 - y as u32),
+            Rank::new((7 - y) as u32),
         ))
     } else {
         None
@@ -50,7 +50,7 @@ pub fn pos_to_square((x, y): (f64, f64)) -> Option<Square> {
 
 pub fn square_to_pos(square: Square) -> (f64, f64) {
     (
-        0.5 + f64::from(square.file()),
-        7.5 - f64::from(square.rank()),
+        0.5 + f64::from(u8::from(square.file())),
+        7.5 - f64::from(u8::from(square.rank())),
     )
 }

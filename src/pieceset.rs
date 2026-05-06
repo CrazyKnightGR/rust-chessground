@@ -91,7 +91,10 @@ pub struct PieceSet {
 
 impl PieceSet {
     fn by_color(&self, color: Color) -> &PieceSetSide {
-        color.fold(&self.white, &self.black)
+        match color {
+            Color::White => &self.white,
+            Color::Black => &self.black,
+        }
     }
 
     pub fn by_piece(&self, piece: &Piece) -> &RenderedPiece {

@@ -1,7 +1,6 @@
 extern crate chessground;
 extern crate gdk;
 extern crate gtk;
-#[macro_use]
 extern crate relm;
 #[macro_use]
 extern crate relm_derive;
@@ -37,7 +36,7 @@ pub struct Model {
 }
 
 impl Model {
-    fn push(&mut self, m: &Move) {
+    fn push(&mut self, m: Move) {
         self.position.play_unchecked(m);
         self.stack.push(m.clone());
         self.switchyard.clear();
@@ -56,7 +55,7 @@ impl Model {
 
     fn redo(&mut self) {
         self.switchyard.pop().map(|m| {
-            self.position.play_unchecked(&m);
+            self.position.play_unchecked(m);
             self.stack.push(m);
         });
     }
@@ -71,7 +70,7 @@ impl Model {
         // replay
         self.position = Chess::default();
         for m in &self.stack {
-            self.position.play_unchecked(m);
+            self.position.play_unchecked(*m);
         }
     }
 
@@ -92,21 +91,21 @@ impl Widget for Win {
         match event {
             Quit => gtk::main_quit(),
             MovePlayed(orig, dest, promotion) => {
-                let legals = self.model.position.legals();
+                let legals = self.model.position.legal_moves();
                 let m = legals.iter().find(|m| {
                     m.from() == Some(orig) && m.to() == dest && m.promotion() == promotion
                 });
 
                 if let Some(m) = m {
-                    self.model.push(m);
+                    self.model.push(*m);
                     self.streams.ground.emit(SetPos(self.model.pos()));
                 }
             }
             KeyPressed(b' ') => {
                 // play a random move
-                let legals = self.model.position.legals();
+                let legals = self.model.position.legal_moves();
                 if let Some(m) = legals.choose(&mut rand::thread_rng()) {
-                    self.model.push(m);
+                    self.model.push(*m);
                     self.streams.ground.emit(SetPos(self.model.pos()));
                 }
             }

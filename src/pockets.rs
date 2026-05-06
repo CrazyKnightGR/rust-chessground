@@ -1,8 +1,8 @@
-use std::f64::consts::PI;
-
 use cairo::Context;
 use gdk::EventButton;
-use shakmaty::{Color, Material, Piece, Role, Square};
+use shakmaty::{Color, Piece, Role, Square};
+
+use crate::ground::SideMaterial;
 use std::time::Instant;
 
 use crate::boardstate::BoardState;
@@ -41,7 +41,7 @@ impl Pockets {
 
         let (x, y) = figurine.pos();
         cr.translate(x, y);
-        cr.rotate(state.orientation().fold(0.0, PI));
+        cr.rotate(state.rotate());
         cr.translate(-0.5, -0.5);
         cr.scale(state.piece_set().scale(), state.piece_set().scale());
 
@@ -60,7 +60,7 @@ impl Pockets {
             Some(ref drag) if drag.threshold => {
                 cr.push_group();
                 cr.translate(drag.pos.0, drag.pos.1);
-                cr.rotate(state.orientation().fold(0.0, PI));
+                cr.rotate(state.rotate());
                 cr.translate(-0.5, -0.5);
                 cr.scale(state.piece_set().scale(), state.piece_set().scale());
                 state.piece_set().by_piece(&drag.piece).render_to_cairo(cr);
@@ -71,13 +71,13 @@ impl Pockets {
         }
     }
 
-    pub fn set_pockets(&mut self, material: Material, color: Color) {
+    pub fn set_pockets(&mut self, material: SideMaterial, color: Color) {
         self.figurines.clear();
 
         let now = Instant::now();
         let material = match color {
-            Color::White => &material.white,
-            Color::Black => &material.black,
+            Color::White => material.white,
+            Color::Black => material.black,
         };
         let x = match color {
             Color::White => 9.0,

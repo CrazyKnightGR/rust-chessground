@@ -16,7 +16,6 @@
 
 use std::cell::RefCell;
 use std::cmp::{max, min};
-use std::f64::consts::PI;
 use std::fmt;
 use std::rc::{Rc, Weak};
 
@@ -30,8 +29,25 @@ use gtk::DrawingArea;
 use relm::{Relm, Update, Widget};
 
 use shakmaty::{
-    Board, Chess, Color, Material, Move, MoveList, Piece, Position, Rank, Role, Square,
+    Board, Chess, Color, Move, MoveList, Piece, Position, Rank, Role, Square,
 };
+
+/// Material for pocket pieces (pawns, knights, bishops, rooks, queens).
+#[derive(Clone, Debug, Default)]
+pub struct Material {
+    pub pawns: u32,
+    pub knights: u32,
+    pub bishops: u32,
+    pub rooks: u32,
+    pub queens: u32,
+}
+
+/// Side material (white and black pockets).
+#[derive(Clone, Debug, Default)]
+pub struct SideMaterial {
+    pub white: Material,
+    pub black: Material,
+}
 
 use crate::boardstate::BoardState;
 use crate::drawable::{DrawShape, Drawable};
@@ -65,7 +81,7 @@ pub enum GroundMsg {
     SetPos(Pos),
     /// Set up a board.
     SetBoard(Board),
-    SetPockets(Material, Color),
+    SetPockets(SideMaterial, Color),
 
     /// Sent when the completed a piece drag or move.
     UserMove(Square, Square, Option<Role>),
@@ -95,7 +111,7 @@ impl Pos {
     pub fn new<P: Position>(p: &P) -> Pos {
         Pos {
             board: p.board().clone(),
-            legals: Box::new(p.legals()),
+            legals: Box::new(p.legal_moves()),
             check: if p.checkers().any() {
                 p.board().king_of(p.turn())
             } else {
@@ -110,7 +126,7 @@ impl Pos {
     pub fn from_board(board: Board) -> Pos {
         Pos {
             board,
-            legals: Box::new(MoveList::new()),
+            legals: Box::new(MoveList::default()),
             check: None,
             last_move: None,
             turn: None,
@@ -157,6 +173,10 @@ impl Pos {
         self.turn = Some(turn);
         self
     }
+
+    pub fn position_key(&self) -> String {
+        self.board.to_string()
+    }
 }
 
 impl Default for Pos {
@@ -202,6 +222,17 @@ impl Update for Ground {
                 self.drawing_area.queue_draw();
             }
             GroundMsg::SetPos(pos) => {
+                // Save current shapes for the old position
+                let old_key = state.board_state.position_key();
+                state.drawable.save_for_position(&old_key);
+
+                // Load shapes for the new position
+                let new_key = pos.position_key();
+                if !state.drawable.load_for_position(&new_key) {
+                    state.drawable.clear_no_emit();
+                }
+                state.board_state.update_position_key(new_key.clone());
+
                 state.pieces.set_board(&pos.board);
                 state.promotable.update(&pos.legals);
                 state.board_state.set_check(pos.check);
@@ -438,7 +469,7 @@ impl<'a> WidgetContext<'a> {
             f64::from(alloc.height()) / 2.0,
         );
         matrix.scale(f64::from(size) / 9.0, f64::from(size) / 9.0);
-        matrix.rotate(board_state.orientation().fold(0.0, PI));
+        matrix.rotate(board_state.rotate());
         matrix.translate(-4.0, -4.0);
 
         WidgetContext {
@@ -475,8 +506,8 @@ impl<'a> WidgetContext<'a> {
 
     pub fn queue_draw_square(&self, square: Square) {
         self.queue_draw_rect(
-            f64::from(square.file()),
-            7.0 - f64::from(square.rank()),
+            f64::from(u8::from(square.file())),
+            7.0 - f64::from(u8::from(square.rank())),
             1.0,
             1.0,
         );

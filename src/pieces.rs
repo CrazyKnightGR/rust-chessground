@@ -67,14 +67,15 @@ impl Pieces {
             selected: None,
             drag: None,
             past: now,
-            figurines: board
-                .pieces()
+            figurines: Square::ALL
+                .into_iter()
+                .filter_map(|sq| board.piece_at(sq).map(|piece| (sq, piece)))
                 .map(|(square, piece)| Figurine {
                     square,
                     piece,
                     start: (
-                        0.5 + f64::from(square.file()),
-                        7.5 - f64::from(square.rank()),
+                        0.5 + f64::from(u8::from(square.file())),
+                        7.5 - f64::from(u8::from(square.rank())),
                     ),
                     elapsed: 0.0,
                     time: now,
@@ -93,9 +94,10 @@ impl Pieces {
         self.figurines.retain(|f| !f.fading || f.alpha() > 0.0001);
 
         // diff
-        let mut added: Vec<_> = board
-            .pieces()
-            .filter(|&(sq, piece)| self.figurine_at(sq).map_or(true, |f| f.piece != piece))
+        let mut added: Vec<_> = Square::ALL
+            .into_iter()
+            .filter_map(|sq| board.piece_at(sq).map(|piece| (sq, piece)))
+            .filter(|(sq, piece)| self.figurine_at(*sq).map_or(true, |f| f.piece != *piece))
             .collect();
 
         for figurine in &mut self.figurines {
@@ -104,7 +106,7 @@ impl Pieces {
             }
 
             // figurine was removed from the square
-            if !board.by_piece(figurine.piece).contains(figurine.square) {
+            if board.piece_at(figurine.square) != Some(figurine.piece) {
                 // checkpoint animation
                 figurine.start = figurine.pos();
                 figurine.elapsed = 0.0;
@@ -118,14 +120,14 @@ impl Pieces {
 
                 let best = added
                     .iter()
-                    .filter(|&&(_, p)| p == figurine.piece)
-                    .min_by_key(|&&(sq, _)| figurine.square.distance(sq))
-                    .map(|&(sq, _)| sq);
+                    .filter(|(_, p)| *p == figurine.piece)
+                    .min_by_key(|(sq, _)| figurine.square.distance(*sq))
+                    .map(|(sq, _)| *sq);
 
                 if let Some(best) = best {
                     // found a close square it could have moved to
                     figurine.square = best;
-                    added.retain(|&(sq, _)| sq != best);
+                    added.retain(|(sq, _)| *sq != figurine.square);
 
                     // snap dragged figurine to square
                     if (now - figurine.last_drag).as_millis() < 200 {
@@ -134,7 +136,7 @@ impl Pieces {
                 } else {
                     // fade it out
                     figurine.fading = true;
-                    figurine.replaced = board.occupied().contains(figurine.square);
+                    figurine.replaced = board.piece_at(figurine.square).is_some();
                 }
             }
         }
@@ -145,8 +147,8 @@ impl Pieces {
                 square,
                 piece,
                 start: (
-                    0.5 + f64::from(square.file()),
-                    7.5 - f64::from(square.rank()),
+                    0.5 + f64::from(u8::from(square.file())),
+                    7.5 - f64::from(u8::from(square.rank())),
                 ),
                 elapsed: 0.0,
                 time: now,
@@ -330,7 +332,7 @@ impl Pieces {
 
         let (x, y) = figurine.pos();
         cr.translate(x, y);
-        cr.rotate(state.orientation().fold(0.0, PI));
+        cr.rotate(state.rotate());
         cr.translate(-0.5, -0.5);
         cr.scale(state.piece_set().scale(), state.piece_set().scale());
 
@@ -347,8 +349,8 @@ impl Pieces {
     fn draw_selection(&self, cr: &Context, state: &BoardState) {
         if let Some(selected) = self.selected {
             cr.rectangle(
-                f64::from(selected.file()),
-                7.0 - f64::from(selected.rank()),
+                f64::from(u8::from(selected.file())),
+                7.0 - f64::from(u8::from(selected.rank())),
                 1.0,
                 1.0,
             );
@@ -358,8 +360,8 @@ impl Pieces {
             if let Some(hovered) = self.drag.as_ref().and_then(|d| pos_to_square(d.pos)) {
                 if state.valid_move(selected, hovered) {
                     cr.rectangle(
-                        f64::from(hovered.file()),
-                        7.0 - f64::from(hovered.rank()),
+                        f64::from(u8::from(hovered.file())),
+                        7.0 - f64::from(u8::from(hovered.rank())),
                         1.0,
                         1.0,
                     );
@@ -379,30 +381,30 @@ impl Pieces {
 
             for square in state.move_targets(selected) {
                 if self.occupied().contains(square) {
-                    cr.move_to(f64::from(square.file()), 7.0 - f64::from(square.rank()));
+                    cr.move_to(f64::from(u8::from(square.file())), 7.0 - f64::from(u8::from(square.rank())));
                     cr.rel_line_to(corner, 0.0);
                     cr.rel_line_to(-corner, corner);
                     cr.rel_line_to(0.0, -corner);
                     cr.fill();
 
                     cr.move_to(
-                        1.0 + f64::from(square.file()),
-                        7.0 - f64::from(square.rank()),
+                        1.0 + f64::from(u8::from(square.file())),
+                        7.0 - f64::from(u8::from(square.rank())),
                     );
                     cr.rel_line_to(0.0, corner);
                     cr.rel_line_to(-corner, -corner);
                     cr.rel_line_to(corner, 0.0);
                     cr.fill();
 
-                    cr.move_to(f64::from(square.file()), 8.0 - f64::from(square.rank()));
+                    cr.move_to(f64::from(u8::from(square.file())), 8.0 - f64::from(u8::from(square.rank())));
                     cr.rel_line_to(corner, 0.0);
                     cr.rel_line_to(-corner, -corner);
                     cr.rel_line_to(0.0, corner);
                     cr.fill();
 
                     cr.move_to(
-                        1.0 + f64::from(square.file()),
-                        8.0 - f64::from(square.rank()),
+                        1.0 + f64::from(u8::from(square.file())),
+                        8.0 - f64::from(u8::from(square.rank())),
                     );
                     cr.rel_line_to(-corner, 0.0);
                     cr.rel_line_to(corner, -corner);
@@ -410,8 +412,8 @@ impl Pieces {
                     cr.fill();
                 } else {
                     cr.arc(
-                        0.5 + f64::from(square.file()),
-                        7.5 - f64::from(square.rank()),
+                        0.5 + f64::from(u8::from(square.file())),
+                        7.5 - f64::from(u8::from(square.rank())),
                         radius,
                         0.0,
                         2.0 * PI,
@@ -427,7 +429,7 @@ impl Pieces {
             Some(ref drag) if drag.threshold => {
                 cr.push_group();
                 cr.translate(drag.pos.0, drag.pos.1);
-                cr.rotate(state.orientation().fold(0.0, PI));
+                cr.rotate(state.rotate());
                 cr.translate(-0.5, -0.5);
                 cr.scale(state.piece_set().scale(), state.piece_set().scale());
                 state.piece_set().by_piece(&drag.piece).render_to_cairo(cr);
