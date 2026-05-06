@@ -99,7 +99,7 @@ impl PieceSet {
     }
 
     pub fn scale(&self) -> f64 {
-        1.0 / 177.0
+        1.0 / 194.0
     }
 }
 
